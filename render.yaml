@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: voyager-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: RAILRADAR_API_KEY
+        sync: false
+      - key: RAILRADAR_API_HOST
+        value: railradar.p.rapidapi.com
+      - key: RAILRADAR_BASE_URL
+        value: https://railradar.p.rapidapi.com
+      - key: RAILRADAR_SEARCH_PATH
+        value: /search
+      - key: AVIATIONSTACK_API_KEY
+        sync: false
+      - key: AVIATIONSTACK_BASE_URL
+        value: http://api.aviationstack.com/v1

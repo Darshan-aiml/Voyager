@@ -1,0 +1,24 @@
+from fastapi import FastAPI
+
+from app.api.routes.booking import router as booking_router
+from app.api.routes.plan import router as plan_router
+from app.core.config import get_settings
+from app.utils.logger import configure_logging
+
+settings = get_settings()
+configure_logging()
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.api_version,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+app.include_router(plan_router, prefix="/api/v1", tags=["planner"])
+app.include_router(booking_router, prefix="/api/v1", tags=["booking"])
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
