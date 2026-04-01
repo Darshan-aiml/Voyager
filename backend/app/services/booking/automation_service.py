@@ -7,8 +7,9 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 
 from app.models.request import BookingWorkflowActionRequest, StartAutomatedBookingRequest
-from app.models.response import BookingWorkflowResponse, BookingWorkflowStep
+from app.models.response import BookingWorkflowResponse, BookingWorkflowStep, BrowserAutomationStub
 from app.services.booking.booking_service import BookingService
+from app.services.booking.playwright_stubs import get_playwright_stub
 
 
 @dataclass
@@ -22,6 +23,7 @@ class WorkflowState:
     human_action_required: bool
     steps: list[BookingWorkflowStep]
     notes: list[str]
+    browser_automation: BrowserAutomationStub
     created_at: datetime
 
 
@@ -51,6 +53,10 @@ class BookingAutomationService:
         provider = self._provider_name(payload.mode)
         workflow_id = str(uuid4())
         steps = self._build_steps(payload.mode, payment_authorized=payload.payment_authorized)
+        browser_automation = get_playwright_stub(payload.mode).build_stub(
+            booking_url=booking_url,
+            next_action=steps[0].id,
+        )
 
         state = WorkflowState(
             workflow_id=workflow_id,
@@ -62,6 +68,7 @@ class BookingAutomationService:
             human_action_required=steps[0].human_action_required,
             steps=steps,
             notes=self._build_notes(payload.mode, payload.payment_authorized),
+            browser_automation=browser_automation,
             created_at=datetime.now(UTC),
         )
         self._workflows[workflow_id] = state
@@ -96,6 +103,7 @@ class BookingAutomationService:
             state.human_action_required = False
             state.notes.append(payload.note or "Workflow failed and requires manual takeover.")
             self._mark_first_incomplete_step(state.steps, "blocked")
+            self._refresh_browser_automation(state)
             return self._to_response(state)
 
         current_step = next((step for step in state.steps if step.id == target_step_id), None)
@@ -129,6 +137,7 @@ class BookingAutomationService:
         state.human_action_required = next_step.human_action_required
         if payload.note:
             state.notes.append(payload.note)
+        self._refresh_browser_automation(state)
         return self._to_response(state)
 
     async def get_workflow(self, workflow_id: str) -> BookingWorkflowResponse:
@@ -219,6 +228,12 @@ class BookingAutomationService:
                 step.status = status_value
                 break
 
+    def _refresh_browser_automation(self, state: WorkflowState) -> None:
+        state.browser_automation = get_playwright_stub(state.mode).build_stub(
+            booking_url=state.booking_url,
+            next_action=state.next_action,
+        )
+
     def _to_response(self, state: WorkflowState) -> BookingWorkflowResponse:
         if state.next_action == "payment":
             payment_step = next(step for step in state.steps if step.id == "payment")
@@ -241,4 +256,5 @@ class BookingAutomationService:
             human_action_required=state.human_action_required,
             steps=state.steps,
             notes=state.notes,
+            browser_automation=state.browser_automation,
         )

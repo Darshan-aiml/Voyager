@@ -52,6 +52,10 @@ class BookingAutomationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.steps[0].status, "pending")
         self.assertEqual(response.steps[3].status, "blocked")
         self.assertTrue(response.steps[2].human_action_required)
+        self.assertEqual(response.browser_automation.runner_name, "redbus_playwright_stub")
+        self.assertTrue(
+            response.browser_automation.script_path.endswith("redbus_playwright_stub.py")
+        )
 
     async def test_requires_user_confirmation_before_automation(self) -> None:
         payload = make_payload()
@@ -84,6 +88,10 @@ class BookingAutomationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(updated.human_action_required)
         self.assertEqual(updated.steps[3].status, "completed")
         self.assertEqual(updated.steps[4].status, "pending")
+        self.assertEqual(
+            updated.browser_automation.next_stub_instruction,
+            "Open https://www.google.com/travel/flights?from=mumbai&to=goa&date=2026-04-01 with Playwright and prepare the complete_booking step.",
+        )
 
 
 class BookingAutomationApiTests(unittest.TestCase):
@@ -122,6 +130,10 @@ class BookingAutomationApiTests(unittest.TestCase):
         get_response = self.client.get(f"/api/v1/booking-workflows/{workflow_id}")
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.json()["provider"], "IRCTC")
+        self.assertEqual(
+            get_response.json()["browser_automation"]["runner_name"],
+            "irctc_playwright_stub",
+        )
 
         action_response = self.client.post(
             f"/api/v1/booking-workflows/{workflow_id}/actions",
@@ -129,6 +141,10 @@ class BookingAutomationApiTests(unittest.TestCase):
         )
         self.assertEqual(action_response.status_code, 200)
         self.assertEqual(action_response.json()["next_action"], "fill_traveller_details")
+        self.assertEqual(
+            action_response.json()["browser_automation"]["next_stub_instruction"],
+            "Navigate to the chosen IRCTC itinerary and stub-fill passenger, berth, and contact details.",
+        )
 
 
 if __name__ == "__main__":

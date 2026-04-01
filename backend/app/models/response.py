@@ -32,6 +32,19 @@ class BookingWorkflowStep(BaseModel):
     details: str | None = None
 
 
+class BrowserAutomationStub(BaseModel):
+    provider: str
+    runner_name: str
+    script_path: str
+    browser: str
+    launch_mode: str
+    current_target_url: str
+    supported_actions: list[str]
+    checkpoint_labels: list[str]
+    next_stub_instruction: str
+    notes: list[str]
+
+
 class BookingWorkflowResponse(BaseModel):
     workflow_id: str
     mode: str
@@ -42,3 +55,4 @@ class BookingWorkflowResponse(BaseModel):
     human_action_required: bool
     steps: list[BookingWorkflowStep]
     notes: list[str]
+    browser_automation: BrowserAutomationStub
