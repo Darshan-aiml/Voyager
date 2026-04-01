@@ -21,3 +21,24 @@ class PlanTripResponse(BaseModel):
 
 class BookingResponse(BaseModel):
     booking_url: str
+
+
+class BookingWorkflowStep(BaseModel):
+    id: str
+    title: str
+    status: str
+    automation_level: str
+    human_action_required: bool = False
+    details: str | None = None
+
+
+class BookingWorkflowResponse(BaseModel):
+    workflow_id: str
+    mode: str
+    provider: str
+    booking_url: str
+    status: str
+    next_action: str
+    human_action_required: bool
+    steps: list[BookingWorkflowStep]
+    notes: list[str]
