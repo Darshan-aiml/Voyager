@@ -4,13 +4,16 @@ import unittest
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
+from app.api.routes.booking import get_booking_automation_service
 from app.main import app
 from app.models.request import (
     BookingWorkflowActionRequest,
     ContactDetails,
+    ExecuteBookingAutomationRequest,
     PassengerDetails,
     StartAutomatedBookingRequest,
 )
+from app.services.booking.live_execution_service import BrowserExecutionResult
 from app.services.booking.automation_service import BookingAutomationService
 from app.services.booking.booking_service import BookingService
 
@@ -93,11 +96,53 @@ class BookingAutomationServiceTests(unittest.IsolatedAsyncioTestCase):
             "Open https://www.google.com/travel/flights?from=mumbai&to=goa&date=2026-04-01 with Playwright and prepare the complete_booking step.",
         )
 
+    async def test_execute_workflow_advances_redbus_step_with_live_runner(self) -> None:
+        class FakeBusRunner:
+            async def run(self, *, payload, booking_url, action, request):
+                return BrowserExecutionResult(
+                    status="completed",
+                    message="Fake runner completed.",
+                    current_url=f"{booking_url}#traveller",
+                    page_title="RedBus Checkout",
+                    requires_human_action=False,
+                    notes=["Executed in test mode."],
+                )
+
+        service = BookingAutomationService(
+            BookingService(),
+            live_runners={
+                "bus": FakeBusRunner(),
+                "train": self.service.live_runners["train"],
+                "flight": self.service.live_runners["flight"],
+            },
+        )
+        response = await service.start_workflow(make_payload(mode="bus"))
+        execution = await service.execute_workflow(
+            response.workflow_id,
+            ExecuteBookingAutomationRequest(action="search_and_select", headless=True),
+        )
+
+        self.assertEqual(execution.status, "completed")
+        self.assertEqual(execution.next_action, "fill_traveller_details")
+        self.assertEqual(execution.page_title, "RedBus Checkout")
+        self.assertTrue(execution.current_url.endswith("#traveller"))
+
 
 class BookingAutomationApiTests(unittest.TestCase):
     def setUp(self) -> None:
         BookingAutomationService._workflows.clear()
+        app.dependency_overrides[get_booking_automation_service] = lambda: BookingAutomationService(
+            BookingService(),
+            live_runners={
+                "bus": FakeBusRunner(),
+                "train": NotImplementedRunner("IRCTC"),
+                "flight": NotImplementedRunner("flight checkout"),
+            },
+        )
         self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        app.dependency_overrides.clear()
 
     def test_automate_booking_endpoint_and_actions(self) -> None:
         start_response = self.client.post(
@@ -144,6 +189,71 @@ class BookingAutomationApiTests(unittest.TestCase):
         self.assertEqual(
             action_response.json()["browser_automation"]["next_stub_instruction"],
             "Navigate to the chosen IRCTC itinerary and stub-fill passenger, berth, and contact details.",
+        )
+
+    def test_execute_booking_workflow_endpoint(self) -> None:
+        start_response = self.client.post(
+            "/api/v1/automate-booking",
+            json={
+                "mode": "bus",
+                "source": "Mumbai",
+                "destination": "Goa",
+                "date": "2026-04-01",
+                "passengers": [
+                    {
+                        "first_name": "Darshan",
+                        "last_name": "R",
+                        "age": 24,
+                        "gender": "male",
+                    }
+                ],
+                "contact": {
+                    "phone": "9876543210",
+                    "email": "darshan@example.com",
+                },
+                "user_confirmed_itinerary": True,
+                "payment_authorized": False,
+            },
+        )
+        workflow_id = start_response.json()["workflow_id"]
+
+        execute_response = self.client.post(
+            f"/api/v1/booking-workflows/{workflow_id}/execute",
+            json={"action": "search_and_select", "headless": True},
+        )
+
+        self.assertEqual(execute_response.status_code, 200)
+        payload = execute_response.json()
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["next_action"], "fill_traveller_details")
+        self.assertEqual(payload["provider"], "RedBus")
+        self.assertEqual(payload["page_title"], "RedBus Checkout")
+
+
+class FakeBusRunner:
+    async def run(self, *, payload, booking_url, action, request):
+        return BrowserExecutionResult(
+            status="completed",
+            message="Fake runner completed.",
+            current_url=f"{booking_url}#traveller",
+            page_title="RedBus Checkout",
+            requires_human_action=False,
+            notes=["Executed in test mode."],
+        )
+
+
+class NotImplementedRunner:
+    def __init__(self, provider_name: str) -> None:
+        self.provider_name = provider_name
+
+    async def run(self, *, payload, booking_url, action, request):
+        return BrowserExecutionResult(
+            status="not_implemented",
+            message=f"Live browser automation is not implemented yet for {self.provider_name}.",
+            current_url=booking_url,
+            page_title=None,
+            requires_human_action=False,
+            notes=[],
         )
 
 

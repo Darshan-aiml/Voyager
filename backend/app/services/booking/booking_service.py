@@ -24,4 +24,8 @@ class BookingService:
                 f"from={source_slug}&to={destination_slug}&date={travel_date.isoformat()}"
             )
 
-        return f"https://www.redbus.in/bus-tickets/{source_slug}-to-{destination_slug}"
+        onward = travel_date.strftime("%d-%b-%Y")
+        return (
+            f"https://www.redbus.in/bus-tickets/{source_slug}-to-{destination_slug}"
+            f"?onward={onward}"
+        )

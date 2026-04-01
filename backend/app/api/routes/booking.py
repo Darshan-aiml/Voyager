@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends
 
 from app.models.request import (
     BookingWorkflowActionRequest,
+    ExecuteBookingAutomationRequest,
     StartAutomatedBookingRequest,
     StartBookingRequest,
 )
-from app.models.response import BookingResponse, BookingWorkflowResponse
+from app.models.response import (
+    BookingAutomationExecutionResponse,
+    BookingResponse,
+    BookingWorkflowResponse,
+)
 from app.services.booking.automation_service import BookingAutomationService
 from app.services.booking.booking_service import BookingService
 
@@ -67,3 +72,16 @@ async def update_booking_workflow(
 ) -> BookingWorkflowResponse:
     logger.info("/booking-workflows/%s/actions invoked action=%s", workflow_id, payload.action)
     return await automation_service.apply_action(workflow_id, payload)
+
+
+@router.post(
+    "/booking-workflows/{workflow_id}/execute",
+    response_model=BookingAutomationExecutionResponse,
+)
+async def execute_booking_workflow(
+    workflow_id: str,
+    payload: ExecuteBookingAutomationRequest,
+    automation_service: BookingAutomationService = Depends(get_booking_automation_service),
+) -> BookingAutomationExecutionResponse:
+    logger.info("/booking-workflows/%s/execute invoked action=%s", workflow_id, payload.action)
+    return await automation_service.execute_workflow(workflow_id, payload)

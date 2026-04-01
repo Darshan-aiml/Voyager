@@ -6,15 +6,32 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 
-from app.models.request import BookingWorkflowActionRequest, StartAutomatedBookingRequest
-from app.models.response import BookingWorkflowResponse, BookingWorkflowStep, BrowserAutomationStub
+from app.models.request import (
+    BookingWorkflowActionRequest,
+    ExecuteBookingAutomationRequest,
+    StartAutomatedBookingRequest,
+)
+from app.models.response import (
+    BookingAutomationExecutionResponse,
+    BookingWorkflowResponse,
+    BookingWorkflowStep,
+    BrowserAutomationStub,
+)
 from app.services.booking.booking_service import BookingService
+from app.services.booking.live_execution_service import (
+    ACTION_TO_WORKFLOW_EVENT,
+    BrowserAutomationRunner,
+    NotImplementedAutomationRunner,
+    resolve_requested_action,
+)
 from app.services.booking.playwright_stubs import get_playwright_stub
+from app.services.booking.redbus_live_runner import RedBusLiveAutomationRunner
 
 
 @dataclass
 class WorkflowState:
     workflow_id: str
+    payload: StartAutomatedBookingRequest
     mode: str
     provider: str
     booking_url: str
@@ -30,8 +47,17 @@ class WorkflowState:
 class BookingAutomationService:
     _workflows: dict[str, WorkflowState] = {}
 
-    def __init__(self, booking_service: BookingService) -> None:
+    def __init__(
+        self,
+        booking_service: BookingService,
+        live_runners: dict[str, BrowserAutomationRunner] | None = None,
+    ) -> None:
         self.booking_service = booking_service
+        self.live_runners = live_runners or {
+            "bus": RedBusLiveAutomationRunner(),
+            "train": NotImplementedAutomationRunner("IRCTC"),
+            "flight": NotImplementedAutomationRunner("flight checkout"),
+        }
 
     async def start_workflow(
         self, payload: StartAutomatedBookingRequest
@@ -60,6 +86,7 @@ class BookingAutomationService:
 
         state = WorkflowState(
             workflow_id=workflow_id,
+            payload=payload,
             mode=payload.mode,
             provider=provider,
             booking_url=booking_url,
@@ -148,6 +175,57 @@ class BookingAutomationService:
                 detail="Booking workflow not found.",
             )
         return self._to_response(state)
+
+    async def execute_workflow(
+        self, workflow_id: str, request: ExecuteBookingAutomationRequest
+    ) -> BookingAutomationExecutionResponse:
+        state = self._workflows.get(workflow_id)
+        if state is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Booking workflow not found.",
+            )
+
+        action = resolve_requested_action(state.next_action, request)
+        runner = self.live_runners.get(state.mode)
+        if runner is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No live automation runner configured for mode={state.mode}.",
+            )
+
+        result = await runner.run(
+            payload=state.payload,
+            booking_url=state.booking_url,
+            action=action,
+            request=request,
+        )
+
+        if result.status == "completed" and action in ACTION_TO_WORKFLOW_EVENT:
+            updated = await self.apply_action(
+                workflow_id,
+                BookingWorkflowActionRequest(
+                    action=ACTION_TO_WORKFLOW_EVENT[action],
+                    note=f"Browser automation executed {action}.",
+                ),
+            )
+        else:
+            updated = self._to_response(state)
+
+        return BookingAutomationExecutionResponse(
+            workflow_id=state.workflow_id,
+            provider=state.provider,
+            mode=state.mode,
+            action=action,
+            status=result.status,
+            current_url=result.current_url,
+            page_title=result.page_title,
+            message=result.message,
+            requires_human_action=result.requires_human_action,
+            next_action=updated.next_action,
+            browser_automation=updated.browser_automation,
+            notes=[*updated.notes, *result.notes],
+        )
 
     def _build_steps(self, mode: str, *, payment_authorized: bool) -> list[BookingWorkflowStep]:
         provider_label = self._provider_name(mode)

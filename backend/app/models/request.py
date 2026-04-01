@@ -62,3 +62,12 @@ class BookingWorkflowActionRequest(BaseModel):
         pattern="^(confirm_search_results|provide_traveller_details|submit_otp|authorize_payment|complete|fail)$",
     )
     note: str | None = None
+
+
+class ExecuteBookingAutomationRequest(BaseModel):
+    headless: bool = False
+    timeout_ms: int = Field(default=45000, ge=1000, le=180000)
+    action: str | None = Field(
+        default=None,
+        pattern="^(search_and_select|fill_traveller_details|verify_user|payment|complete_booking)$",
+    )

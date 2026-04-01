@@ -45,6 +45,21 @@ class BrowserAutomationStub(BaseModel):
     notes: list[str]
 
 
+class BookingAutomationExecutionResponse(BaseModel):
+    workflow_id: str
+    provider: str
+    mode: str
+    action: str
+    status: str
+    current_url: str | None = None
+    page_title: str | None = None
+    message: str
+    requires_human_action: bool
+    next_action: str
+    browser_automation: BrowserAutomationStub
+    notes: list[str]
+
+
 class BookingWorkflowResponse(BaseModel):
     workflow_id: str
     mode: str
