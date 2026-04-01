@@ -1,0 +1,34 @@
+{
+  "tools": [
+    {
+      "name": "plan_trip",
+      "method": "POST",
+      "path": "/api/v1/plan-trip",
+      "description": "Get structured trip options with best option and fallback."
+    },
+    {
+      "name": "travel_advisor",
+      "method": "POST",
+      "path": "/api/v1/travel-advisor/respond",
+      "description": "Get LLM-grounding guidance for itinerary advice, fallback explanation, booking status, and next-step responses."
+    },
+    {
+      "name": "automate_booking",
+      "method": "POST",
+      "path": "/api/v1/automate-booking",
+      "description": "Start a booking workflow after the user confirms an itinerary."
+    },
+    {
+      "name": "get_booking_workflow",
+      "method": "GET",
+      "path": "/api/v1/booking-workflows/{workflow_id}",
+      "description": "Read the current booking workflow status."
+    },
+    {
+      "name": "execute_booking_workflow",
+      "method": "POST",
+      "path": "/api/v1/booking-workflows/{workflow_id}/execute",
+      "description": "Run the current browser automation step for a booking workflow."
+    }
+  ]
+}

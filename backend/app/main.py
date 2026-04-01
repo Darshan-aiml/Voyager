@@ -1,3 +1,4 @@
+from app.api.routes.advisor import router as advisor_router
 from fastapi import FastAPI
 
 from app.api.routes.booking import router as booking_router
@@ -17,6 +18,7 @@ app = FastAPI(
 
 app.include_router(plan_router, prefix="/api/v1", tags=["planner"])
 app.include_router(booking_router, prefix="/api/v1", tags=["booking"])
+app.include_router(advisor_router, prefix="/api/v1", tags=["advisor"])
 
 
 @app.get("/health")

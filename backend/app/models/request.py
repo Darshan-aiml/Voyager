@@ -1,4 +1,6 @@
-from datetime import date
+from __future__ import annotations
+
+from datetime import date as dt_date
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +8,7 @@ from pydantic import BaseModel, Field
 class PlanTripRequest(BaseModel):
     source: str = Field(..., min_length=2, description="Source city")
     destination: str = Field(..., min_length=2, description="Destination city")
-    date: date
+    date: dt_date
     budget: float = Field(..., gt=0)
 
 
@@ -14,7 +16,7 @@ class StartBookingRequest(BaseModel):
     mode: str = Field(..., pattern="^(train|flight|bus)$")
     source: str = Field(..., min_length=2)
     destination: str = Field(..., min_length=2)
-    date: date
+    date: dt_date
     external_id: str | None = None
 
 
@@ -42,7 +44,7 @@ class StartAutomatedBookingRequest(BaseModel):
     mode: str = Field(..., pattern="^(train|flight|bus)$")
     source: str = Field(..., min_length=2)
     destination: str = Field(..., min_length=2)
-    date: date
+    date: dt_date
     external_id: str | None = None
     passengers: list[PassengerDetails] = Field(..., min_length=1)
     contact: ContactDetails
@@ -71,3 +73,16 @@ class ExecuteBookingAutomationRequest(BaseModel):
         default=None,
         pattern="^(search_and_select|fill_traveller_details|verify_user|payment|complete_booking)$",
     )
+
+
+class TravelAdvisorRequest(BaseModel):
+    intent: str = Field(
+        ...,
+        pattern="^(plan_trip|explain_fallback|booking_status|booking_next_step|general_guidance)$",
+    )
+    user_message: str = Field(..., min_length=3)
+    source: str | None = Field(default=None, min_length=2)
+    destination: str | None = Field(default=None, min_length=2)
+    date: dt_date | None = None
+    budget: float | None = Field(default=None, gt=0)
+    workflow_id: str | None = None

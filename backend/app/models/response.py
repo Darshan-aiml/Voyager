@@ -60,6 +60,22 @@ class BookingAutomationExecutionResponse(BaseModel):
     notes: list[str]
 
 
+class AdvisorTalkingPoint(BaseModel):
+    label: str
+    content: str
+
+
+class TravelAdvisorResponse(BaseModel):
+    intent: str
+    user_message: str
+    answer_brief: str
+    llm_system_guidance: str
+    talking_points: list[AdvisorTalkingPoint]
+    suggested_follow_ups: list[str]
+    recommended_tools: list[str]
+    structured_context: dict
+
+
 class BookingWorkflowResponse(BaseModel):
     workflow_id: str
     mode: str
