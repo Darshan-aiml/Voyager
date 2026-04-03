@@ -50,28 +50,47 @@ async def execute_booking_flow(
         browser = await playwright.chromium.launch(headless=False)
         page = await browser.new_page()
         await page.goto("https://www.redbus.in", wait_until="domcontentloaded")
-        await page.wait_for_timeout(1000)
+        await page.wait_for_load_state("networkidle")
 
         print("Filling details...")
+        await page.wait_for_selector("#src", state="visible")
         await page.fill("#src", source)
-        await page.wait_for_timeout(750)
+        await page.wait_for_selector(
+            "ul.autoFill li, ul.sc-dnqmqq li, [class*='suggestion'] li",
+            state="visible",
+        )
         await page.press("#src", "ArrowDown")
-        await page.wait_for_timeout(300)
         await page.press("#src", "Enter")
 
-        await page.wait_for_timeout(750)
+        await page.wait_for_selector("#dest", state="visible")
         await page.fill("#dest", destination)
-        await page.wait_for_timeout(750)
+        await page.wait_for_selector(
+            "ul.autoFill li, ul.sc-dnqmqq li, [class*='suggestion'] li",
+            state="visible",
+        )
         await page.press("#dest", "ArrowDown")
-        await page.wait_for_timeout(300)
         await page.press("#dest", "Enter")
 
         if date:
             print(f"Received travel date: {date}")
 
-        await page.wait_for_timeout(750)
-        await page.click("#search_button")
-        await page.wait_for_timeout(5000)
+        search_button = page.locator("#search_button")
+        await search_button.wait_for(state="visible")
+        await page.wait_for_function(
+            """
+            (selector) => {
+                const element = document.querySelector(selector);
+                return Boolean(element) && !element.disabled;
+            }
+            """,
+            "#search_button",
+        )
+        await search_button.click()
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_selector(
+            ".bus-items, [class*='bus-items'], [class*='search-page'], [class*='travels']",
+            state="visible",
+        )
 
         current_url = page.url
         success = True
