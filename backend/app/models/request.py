@@ -75,6 +75,12 @@ class ExecuteBookingAutomationRequest(BaseModel):
     )
 
 
+class ExecuteBookingRequest(BaseModel):
+    source: str = Field(..., min_length=2)
+    destination: str = Field(..., min_length=2)
+    date: dt_date | None = None
+
+
 class TravelAdvisorRequest(BaseModel):
     intent: str = Field(
         ...,

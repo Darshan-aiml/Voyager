@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.models.request import (
     BookingWorkflowActionRequest,
+    ExecuteBookingRequest,
     ExecuteBookingAutomationRequest,
     StartAutomatedBookingRequest,
     StartBookingRequest,
@@ -14,7 +15,7 @@ from app.models.response import (
     BookingWorkflowResponse,
 )
 from app.services.booking.automation_service import BookingAutomationService
-from app.services.booking.booking_service import BookingService
+from app.services.booking.booking_service import BookingService, execute_booking_flow
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,6 +45,20 @@ async def start_booking(
         external_id=payload.external_id,
     )
     return BookingResponse(booking_url=booking_url)
+
+
+@router.post("/execute-booking")
+async def execute_booking(payload: ExecuteBookingRequest) -> dict[str, str]:
+    logger.info(
+        "/execute-booking invoked for source=%s destination=%s",
+        payload.source,
+        payload.destination,
+    )
+    return await execute_booking_flow(
+        source=payload.source,
+        destination=payload.destination,
+        date=payload.date.isoformat() if payload.date else None,
+    )
 
 
 @router.post("/automate-booking", response_model=BookingWorkflowResponse)

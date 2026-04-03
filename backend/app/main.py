@@ -18,6 +18,7 @@ app = FastAPI(
 
 app.include_router(plan_router, prefix="/api/v1", tags=["planner"])
 app.include_router(booking_router, prefix="/api/v1", tags=["booking"])
+app.include_router(booking_router, prefix="/api", tags=["booking"])
 app.include_router(advisor_router, prefix="/api/v1", tags=["advisor"])
 
 
