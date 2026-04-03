@@ -1,3 +1,5 @@
+import subprocess
+
 from app.api.routes.advisor import router as advisor_router
 from fastapi import FastAPI
 
@@ -15,6 +17,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+@app.on_event("startup")
+async def install_playwright() -> None:
+    try:
+        subprocess.run(["playwright", "install", "--with-deps", "chromium"], check=True)
+        print("Playwright Chromium installed")
+    except Exception as exc:
+        print(f"Playwright install failed: {exc}")
 
 app.include_router(plan_router, prefix="/api/v1", tags=["planner"])
 app.include_router(booking_router, prefix="/api/v1", tags=["booking"])
