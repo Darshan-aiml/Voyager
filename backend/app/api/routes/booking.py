@@ -15,7 +15,8 @@ from app.models.response import (
     BookingWorkflowResponse,
 )
 from app.services.booking.automation_service import BookingAutomationService
-from app.services.booking.booking_service import BookingService, execute_booking_flow
+from app.services.booking.booking_service import BookingService
+from app.utils.helpers import slugify_city
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,11 +55,14 @@ async def execute_booking(payload: ExecuteBookingRequest) -> dict[str, str]:
         payload.source,
         payload.destination,
     )
-    return await execute_booking_flow(
-        source=payload.source,
-        destination=payload.destination,
-        date=payload.date.isoformat() if payload.date else None,
-    )
+    source_slug = slugify_city(payload.source)
+    destination_slug = slugify_city(payload.destination)
+    booking_url = f"https://www.redbus.in/bus-tickets/{source_slug}-to-{destination_slug}"
+
+    return {
+        "status": "success",
+        "booking_url": booking_url,
+    }
 
 
 @router.post("/automate-booking", response_model=BookingWorkflowResponse)

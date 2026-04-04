@@ -16,8 +16,14 @@ class Settings(BaseSettings):
     aviationstack_base_url: str = Field(default="http://api.aviationstack.com/v1")
     aviationstack_api_key: str = Field(default="")
 
+    gemini_base_url: str = Field(default="https://generativelanguage.googleapis.com/v1beta")
+    gemini_model: str = Field(default="gemini-2.5-flash")
+    gemini_api_key: str = Field(default="")
+    gemini_temperature: float = Field(default=0.4)
+
     request_timeout_seconds: float = 15.0
     min_transfer_buffer_hours: int = 2
+    max_itinerary_days: int = 7
 
     reliability_train: float = 0.95
     reliability_flight: float = 0.8

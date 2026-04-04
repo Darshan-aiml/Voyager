@@ -1,227 +1,214 @@
-from datetime import date
 import unittest
 
 from app.core.config import Settings
-from app.models.response import TravelOption
-from app.services.planner.plan_service import PlanService
+from app.services.planner.travel_planner import TravelPlanner
 
 
-def make_option(
-    *,
-    mode: str,
-    route: str,
-    price: float,
-    duration_minutes: int,
-    reliability: float,
-    reason: str | None = None,
-) -> TravelOption:
-    return TravelOption(
-        mode=mode,
-        route=route,
-        price=price,
-        duration=f"{duration_minutes // 60}h" if duration_minutes else "N/A",
-        duration_minutes=duration_minutes,
-        reliability=reliability,
-        reason=reason,
-        availability="Available",
-    )
+VALID_JSON = """
+{
+  "source": "Mumbai",
+  "destination": "Goa",
+  "preferences": {
+    "budget": 2500,
+    "travel_style": "comfort",
+    "people": 2,
+    "days": 3
+  },
+  "best_option": {
+    "mode": "sleeper bus",
+    "price": 700,
+    "duration": "10h",
+    "reason": "it balances cost and comfort for an overnight trip"
+  },
+  "alternatives": [
+    {
+      "mode": "train",
+      "price": 1200,
+      "duration": "8h 30m",
+      "reason": "it saves some time but is less flexible for late departures"
+    },
+    {
+      "mode": "bus",
+      "price": 950,
+      "duration": "9h 30m",
+      "reason": "it is slightly faster with improved sleeper comfort"
+    }
+  ],
+  "itinerary": [
+    {
+      "day": 1,
+      "plan": "Arrive in Goa, check in, and enjoy a relaxed beach evening."
+    },
+    {
+      "day": 2,
+      "plan": "Visit North Goa beaches, cafes, and a sunset cruise."
+    },
+    {
+      "day": 3,
+      "plan": "Explore Old Goa in the morning and depart later in the day."
+    }
+  ],
+  "insight": "The bus keeps costs down while preserving most of the trip budget for the stay and activities."
+}
+""".strip()
+
+OVERRIDE_JSON = """
+{
+  "source": "Delhi",
+  "destination": "Jaipur",
+  "preferences": {
+    "budget": 3000,
+    "travel_style": "budget",
+    "people": 1,
+    "days": 2
+  },
+  "best_option": {
+    "mode": "flight",
+    "price": 50,
+    "duration": "1h",
+    "reason": "the model guessed a very cheap flight"
+  },
+  "alternatives": [
+    {
+      "mode": "train",
+      "price": 600,
+      "duration": "5h",
+      "reason": "train is practical and affordable"
+    },
+    {
+      "mode": "bus",
+      "price": 780,
+      "duration": "6h",
+      "reason": "night bus is direct and avoids transfers"
+    }
+  ],
+  "itinerary": [
+    {"day": 1, "plan": "Travel and explore central Jaipur."},
+    {"day": 2, "plan": "Visit Amber Fort and local markets."}
+  ],
+  "insight": "This is a quick getaway."
+}
+""".strip()
+
+NORMALIZATION_JSON = """
+{
+  "source": "Bangalore",
+  "destination": "Chennai",
+  "preferences": {
+    "budget": "1500",
+    "travel_style": "luxury",
+    "people": "2",
+    "days": 12
+  },
+  "best_option": {
+    "mode": "coach",
+    "price": 99,
+    "duration": "6 hours",
+    "reason": "cheap choice"
+  },
+  "alternatives": [
+    {
+      "mode": "rail",
+      "price": 800,
+      "duration": "5h 15m",
+      "reason": "steady option"
+    },
+    {
+      "mode": "bus",
+      "price": 1100,
+      "duration": "6h 40m",
+      "reason": "comfortable overnight bus service"
+    }
+  ],
+  "itinerary": [
+    {"day": 1, "plan": "Start the trip."}
+  ],
+  "insight": "Flexible plan."
+}
+""".strip()
 
 
-class StubTrainService:
-    def __init__(self, options=None, error: Exception | None = None):
-        self.options = options if options is not None else []
+class StubGeminiClient:
+    def __init__(self, responses: list[str] | None = None, error: Exception | None = None):
+        self.responses = responses or []
         self.error = error
+        self.calls = 0
 
-    async def fetch_trains(self, source: str, destination: str, travel_date: str):
-        if self.error:
+    async def generate_response(self, prompt: str) -> str:
+        self.calls += 1
+        if self.error is not None:
             raise self.error
-        return self.options
+        if self.responses:
+            return self.responses.pop(0)
+        return VALID_JSON
 
 
-class StubFlightService:
-    def __init__(self, options=None, error: Exception | None = None):
-        self.options = options if options is not None else []
-        self.error = error
-
-    async def fetch_flights(self, source: str, destination: str, travel_date: str):
-        if self.error:
-            raise self.error
-        return self.options
-
-
-class StubBusService:
-    def __init__(self, option: TravelOption | object | None = None, error: Exception | None = None):
-        self.option = option
-        self.error = error
-
-    async def generate_option(
-        self,
-        source: str,
-        destination: str,
-        inferred_price: float = 0.0,
-        inferred_duration_minutes: int = 0,
-    ):
-        if self.error:
-            raise self.error
-        if self.option is not None:
-            return self.option
-        return make_option(
-            mode="bus",
-            route=f"{source} -> {destination}",
-            price=inferred_price,
-            duration_minutes=inferred_duration_minutes,
-            reliability=0.65,
-            reason="Always available backup",
-        )
-
-
-class PlanServiceTests(unittest.IsolatedAsyncioTestCase):
+class TravelPlannerTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.settings = Settings()
-        self.travel_date = date(2026, 4, 1)
+        self.settings = Settings(gemini_api_key="test-key", max_itinerary_days=5)
 
-    async def test_selects_best_under_budget_and_returns_fallback(self) -> None:
-        train = make_option(
-            mode="train",
-            route="Mumbai -> Goa (Konkan Express)",
-            price=1200,
-            duration_minutes=480,
-            reliability=0.95,
-        )
-        flight = make_option(
-            mode="flight",
-            route="BOM -> GOI (Air Demo)",
-            price=2500,
-            duration_minutes=75,
-            reliability=0.80,
-        )
-        service = PlanService(
-            settings=self.settings,
-            train_service=StubTrainService([train]),
-            flight_service=StubFlightService([flight]),
-            bus_service=StubBusService(),
+    async def test_returns_valid_structured_plan(self) -> None:
+        planner = TravelPlanner(self.settings, gemini_client=StubGeminiClient([VALID_JSON]))
+
+        response = await planner.generate_travel_plan(
+            "Plan a comfortable 3-day trip from Mumbai to Goa for 2 people under 2500 INR."
         )
 
-        response = await service.plan_trip("Mumbai", "Goa", self.travel_date, budget=3000)
+        self.assertEqual(response.data.source, "Mumbai")
+        self.assertEqual(response.data.best_option.mode, "bus")
+        self.assertIn("deterministic score", response.data.best_option.reason.lower())
+        self.assertIn("best option", response.response.lower())
 
-        self.assertEqual(response.best_option.mode, "train")
-        self.assertIsNotNone(response.fallback_option)
-        self.assertEqual(response.fallback_option.mode, "bus")
-
-    async def test_returns_lowest_price_when_budget_excludes_everything(self) -> None:
-        train = make_option(
-            mode="train",
-            route="Mumbai -> Goa (Fast Train)",
-            price=1800,
-            duration_minutes=420,
-            reliability=0.95,
-        )
-        flight = make_option(
-            mode="flight",
-            route="BOM -> GOI (Budget Air)",
-            price=2200,
-            duration_minutes=90,
-            reliability=0.80,
-        )
-        service = PlanService(
-            settings=self.settings,
-            train_service=StubTrainService([train]),
-            flight_service=StubFlightService([flight]),
-            bus_service=StubBusService(),
+    async def test_retries_once_when_first_response_is_not_parseable(self) -> None:
+        planner = TravelPlanner(
+            self.settings,
+            gemini_client=StubGeminiClient(["not json", VALID_JSON]),
         )
 
-        response = await service.plan_trip("Mumbai", "Goa", self.travel_date, budget=100)
-
-        self.assertEqual(response.best_option.price, 1800.0)
-        self.assertEqual(
-            response.best_option.reason,
-            "No option within budget; selected lowest available fare",
-        )
-        self.assertIsNotNone(response.fallback_option)
-
-    async def test_validation_failure_switches_to_bus_fallback(self) -> None:
-        risky_train = make_option(
-            mode="train",
-            route="Mumbai -> Pune (Tight Transfer)",
-            price=900,
-            duration_minutes=180,
-            reliability=0.95,
-            reason="2026-04-01T10:00:00+05:30 | 2026-04-01T11:00:00+05:30",
-        )
-        service = PlanService(
-            settings=self.settings.model_copy(update={"min_transfer_buffer_hours": 2}),
-            train_service=StubTrainService([risky_train]),
-            flight_service=StubFlightService([]),
-            bus_service=StubBusService(),
+        response = await planner.generate_travel_plan(
+            "Plan a comfortable 3-day trip from Mumbai to Goa for 2 people under 2500 INR."
         )
 
-        response = await service.plan_trip("Mumbai", "Pune", self.travel_date, budget=2000)
+        self.assertEqual(response.data.destination, "Goa")
+        self.assertEqual(response.data.preferences.days, 3)
 
-        self.assertEqual(response.best_option.mode, "bus")
-        self.assertEqual(response.fallback_option.mode, "bus")
-
-    async def test_provider_crashes_still_return_a_safe_option(self) -> None:
-        service = PlanService(
-            settings=self.settings,
-            train_service=StubTrainService(error=RuntimeError("train API down")),
-            flight_service=StubFlightService(error=RuntimeError("flight API down")),
-            bus_service=StubBusService(),
+    async def test_raises_after_second_failure(self) -> None:
+        planner = TravelPlanner(
+            self.settings,
+            gemini_client=StubGeminiClient(["not json", "still not json"]),
         )
 
-        response = await service.plan_trip("Delhi", "Jaipur", self.travel_date, budget=1500)
+        with self.assertRaises(RuntimeError):
+            await planner.generate_travel_plan("Help me plan a trip.")
 
-        self.assertEqual(response.best_option.mode, "bus")
-        self.assertEqual(response.fallback_option.mode, "bus")
-        self.assertIn("Delhi -> Jaipur", response.best_option.route)
-
-    async def test_bus_generator_crash_uses_emergency_fallback(self) -> None:
-        service = PlanService(
-            settings=self.settings,
-            train_service=StubTrainService(error=RuntimeError("train API down")),
-            flight_service=StubFlightService(error=RuntimeError("flight API down")),
-            bus_service=StubBusService(error=RuntimeError("bus generator down")),
+    async def test_raises_when_client_raises(self) -> None:
+        planner = TravelPlanner(
+            self.settings,
+            gemini_client=StubGeminiClient(error=RuntimeError("network down")),
         )
 
-        response = await service.plan_trip("Chennai", "Bengaluru", self.travel_date, budget=1500)
+        with self.assertRaises(RuntimeError):
+            await planner.generate_travel_plan("Plan a fast trip from Delhi to Jaipur.")
 
-        self.assertEqual(response.best_option.mode, "bus")
-        self.assertEqual(response.fallback_option.mode, "bus")
-        self.assertEqual(response.best_option.price, 0.0)
-        self.assertEqual(
-            response.best_option.reason,
-            "Emergency fallback generated after provider failure",
-        )
+    async def test_deterministic_scoring_can_override_llm_best_option(self) -> None:
+        planner = TravelPlanner(self.settings, gemini_client=StubGeminiClient([OVERRIDE_JSON]))
 
-    async def test_malformed_provider_data_is_ignored_without_crashing(self) -> None:
-        valid_train = make_option(
-            mode="train",
-            route="Hyderabad -> Vizag (Night Express)",
-            price=1300,
-            duration_minutes=540,
-            reliability=0.95,
-        )
-        service = PlanService(
-            settings=self.settings,
-            train_service=StubTrainService([valid_train, {"bad": "row"}]),
-            flight_service=StubFlightService(
-                [
-                    make_option(
-                        mode="flight",
-                        route="HYD -> VTZ (Broken Fare)",
-                        price=-400,
-                        duration_minutes=60,
-                        reliability=0.80,
-                    )
-                ]
-            ),
-            bus_service=StubBusService(),
-        )
+        response = await planner.generate_travel_plan("Find the smartest low-cost way from Delhi to Jaipur.")
 
-        response = await service.plan_trip("Hyderabad", "Vizag", self.travel_date, budget=2000)
+        self.assertIn(response.data.best_option.mode, {"bus", "train"})
+        self.assertGreaterEqual(response.data.best_option.price, 250)
+        self.assertNotEqual(response.data.best_option.mode, "flight")
 
-        self.assertEqual(response.best_option.mode, "train")
-        self.assertEqual(response.best_option.route, valid_train.route)
-        self.assertIsNotNone(response.fallback_option)
+    async def test_normalization_caps_itinerary_days_and_cleans_modes(self) -> None:
+        planner = TravelPlanner(self.settings, gemini_client=StubGeminiClient([NORMALIZATION_JSON]))
+
+        response = await planner.generate_travel_plan("Plan Bangalore to Chennai with a flexible budget.")
+
+        self.assertEqual(response.data.preferences.days, 5)
+        self.assertLessEqual(len(response.data.itinerary), 5)
+        modes = {response.data.best_option.mode, *(item.mode for item in response.data.alternatives)}
+        self.assertTrue(modes.issubset({"bus", "train", "flight"}))
+        self.assertTrue(all(item.day >= 1 for item in response.data.itinerary))
 
 
 if __name__ == "__main__":

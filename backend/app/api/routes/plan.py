@@ -145,7 +145,7 @@ def _merge_slot_state(payload: TravelPlanRequest, extracted_fields: dict, query_
     return TravelSlotState.model_validate(merged)
 
 
-@router.post("/plan-trip", response_model=CompletePlanResponse | IncompletePlanResponse)
+
 @router.post("/plan_trip", response_model=CompletePlanResponse | IncompletePlanResponse)
 async def plan_trip(
     payload: TravelPlanRequest,

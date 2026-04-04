@@ -4,7 +4,13 @@
       "name": "plan_trip",
       "method": "POST",
       "path": "/api/v1/plan-trip",
-      "description": "Get structured trip options with best option and fallback."
+      "description": "Primary slot-filling and planning tool. Body supports: source, destination, date, people, days, preference, optional query, and optional slot_state. If any required field is missing it returns exactly {status:\"incomplete\", missing_field:\"<field>\", slot_state:{...}}. If complete it returns {status:\"complete\", data:{best_option, alternatives, itinerary, insight, booking_url, ...}}."
+    },
+    {
+      "name": "execute_booking",
+      "method": "POST",
+      "path": "/api/v1/execute-booking",
+      "description": "Open RedBus booking page for confirmed trip. Body: {\"source\", \"destination\"}. Trigger only when user confirms using yes/book/proceed/confirm."
     },
     {
       "name": "travel_advisor",

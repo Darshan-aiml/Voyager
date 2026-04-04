@@ -1,7 +1,9 @@
 import subprocess
 
 from app.api.routes.advisor import router as advisor_router
+from app.api.routes.extract import router as extract_router
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.booking import router as booking_router
 from app.api.routes.plan import router as plan_router
@@ -18,6 +20,17 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.on_event("startup")
 async def install_playwright() -> None:
@@ -27,7 +40,11 @@ async def install_playwright() -> None:
     except Exception as exc:
         print(f"Playwright install failed: {exc}")
 
+
 app.include_router(plan_router, prefix="/api/v1", tags=["planner"])
+app.include_router(plan_router, prefix="/api", tags=["planner"])
+app.include_router(extract_router, prefix="/api/v1", tags=["planner"])
+app.include_router(extract_router, prefix="/api", tags=["planner"])
 app.include_router(booking_router, prefix="/api/v1", tags=["booking"])
 app.include_router(booking_router, prefix="/api", tags=["booking"])
 app.include_router(advisor_router, prefix="/api/v1", tags=["advisor"])
